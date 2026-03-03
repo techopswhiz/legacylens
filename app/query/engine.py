@@ -14,7 +14,7 @@ from llama_index.llms.openai_like import OpenAILike
 from llama_index.vector_stores.pinecone import PineconeVectorStore
 
 from app.config import settings
-from app.query.prompts import SYSTEM_PROMPT, QUERY_TEMPLATE
+from app.query.prompts import SYSTEM_PROMPT, QUERY_TEMPLATE, MODE_PROMPTS
 
 logger = logging.getLogger(__name__)
 
@@ -144,7 +144,7 @@ class LegacyLensEngine:
         return sources, nodes_with_scores
 
     def stream_answer(
-        self, query_text: str, nodes_with_scores: list
+        self, query_text: str, nodes_with_scores: list, mode: str = "explain"
     ) -> Generator[str, None, None]:
         """Stream LLM answer token-by-token given pre-retrieved nodes."""
         # Build context string from nodes (same format LlamaIndex would use)
@@ -168,9 +168,12 @@ class LegacyLensEngine:
             )
         context_str = "\n\n".join(context_parts)
 
+        # Pick mode-specific system prompt
+        system_prompt = MODE_PROMPTS.get(mode, SYSTEM_PROMPT)
+
         # Build full prompt
         full_prompt = (
-            SYSTEM_PROMPT + "\n\n"
+            system_prompt + "\n\n"
             + QUERY_TEMPLATE.format(
                 context_str=context_str,
                 query_str=query_text,

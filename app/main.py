@@ -22,9 +22,13 @@ engine = LegacyLensEngine()
 
 # --- Request/Response Models ---
 
+VALID_MODES = {"explain", "business_logic", "dependencies", "translate", "xref", "summarize"}
+
+
 class QueryRequest(BaseModel):
     query: str = Field(..., min_length=1, max_length=2000)
     top_k: int = Field(default=5, ge=1, le=20)
+    mode: str = Field(default="explain")
 
 
 class SourceResponse(BaseModel):
@@ -163,7 +167,8 @@ async def query_stream(request: QueryRequest):
             yield f"event: sources\ndata: {json.dumps(sources_data)}\n\n"
 
             # Phase 2: Stream LLM answer token by token
-            for token in engine.stream_answer(request.query, nodes):
+            mode = request.mode if request.mode in VALID_MODES else "explain"
+            for token in engine.stream_answer(request.query, nodes, mode=mode):
                 yield f"event: token\ndata: {json.dumps(token)}\n\n"
 
             latency_ms = (time.time() - t0) * 1000
