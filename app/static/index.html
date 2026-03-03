@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>LegacyLens</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔍</text></svg>">
   <!-- Highlight.js dark theme for syntax highlighting -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11/build/styles/atom-one-dark.min.css">
   <!-- Retro pixel font -->
@@ -307,6 +308,29 @@
     .source-body pre code {
       font-family: var(--code-font);
     }
+    .source-body-actions {
+      display: flex;
+      justify-content: flex-end;
+      padding: 0.4rem 0.75rem;
+      border-top: 1px solid var(--border);
+      background: var(--surface);
+    }
+    .source-body-actions a {
+      font-family: var(--pixel-font);
+      font-size: 0.45rem;
+      letter-spacing: 0.5px;
+      color: var(--cyan);
+      text-decoration: none;
+      padding: 0.3rem 0.6rem;
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      transition: all 0.15s;
+    }
+    .source-body-actions a:hover {
+      border-color: var(--cyan);
+      background: rgba(66, 212, 255, 0.1);
+      box-shadow: 0 0 8px rgba(66, 212, 255, 0.2);
+    }
     .chevron { transition: transform 0.2s; color: var(--text-dim); font-size: 0.7rem; }
     .source-card.expanded .chevron { transform: rotate(90deg); }
 
@@ -348,7 +372,7 @@
   <div class="container">
     <header>
       <h1>LegacyLens</h1>
-      <p>RAG-powered code exploration for the GnuCOBOL compiler</p>
+      <p>Ask questions about legacy code. Get answers with sources.</p>
     </header>
 
     <div class="mode-bar" id="mode-bar">
@@ -626,6 +650,12 @@
       }
     }
 
+    const GNUCOBOL_BASE = 'https://github.com/OCamlPro/gnucobol/blob/gnucobol-3.x/';
+
+    function buildGitHubUrl(filePath, lineStart, lineEnd) {
+      return GNUCOBOL_BASE + filePath + '#L' + lineStart + '-L' + lineEnd;
+    }
+
     function displaySources(sources) {
       const list = document.getElementById('sources-list');
       list.textContent = '';
@@ -644,6 +674,11 @@
 
         const codeEl = h('code', { className: 'language-' + hljsLang }, src.text);
         const preEl = h('pre', null, codeEl);
+
+        const ghUrl = buildGitHubUrl(src.file_path, src.line_start, src.line_end);
+        const actionsBar = h('div', { className: 'source-body-actions' },
+          h('a', { href: ghUrl, target: '_blank', rel: 'noopener' }, 'View full file on GitHub \u2197'),
+        );
 
         const card = h('div', { className: 'source-card' },
           h('div', {
@@ -665,7 +700,7 @@
               h('span', { className: 'chevron' }, '\u25B6'),
             ),
           ),
-          h('div', { className: 'source-body' }, preEl),
+          h('div', { className: 'source-body' }, preEl, actionsBar),
         );
         list.appendChild(card);
       });
