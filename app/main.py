@@ -1,12 +1,13 @@
 """FastAPI application for LegacyLens."""
 
+import json
 import logging
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -122,6 +123,68 @@ async def query_codebase(request: QueryRequest):
         ],
         query=result.query,
         latency_ms=result.latency_ms,
+    )
+
+
+@app.post("/api/query/stream")
+async def query_stream(request: QueryRequest):
+    """Stream query results via Server-Sent Events.
+
+    Event sequence:
+      event: sources  — JSON array of source chunks (sent immediately after retrieval)
+      event: token    — single LLM token string (repeated)
+      event: done     — JSON with latency_ms
+    """
+    if engine._query_engine is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Query engine not initialized. Check API keys and Pinecone index.",
+        )
+
+    def event_generator():
+        t0 = time.time()
+
+        try:
+            # Phase 1: Retrieve chunks (embed query + Pinecone search)
+            sources, nodes = engine.retrieve_chunks(request.query, request.top_k)
+            sources_data = [
+                {
+                    "file_path": s.file_path,
+                    "line_start": s.line_start,
+                    "line_end": s.line_end,
+                    "language": s.language,
+                    "chunk_type": s.chunk_type,
+                    "function_name": s.function_name,
+                    "text": s.text,
+                    "score": s.score,
+                }
+                for s in sources
+            ]
+            yield f"event: sources\ndata: {json.dumps(sources_data)}\n\n"
+
+            # Phase 2: Stream LLM answer token by token
+            for token in engine.stream_answer(request.query, nodes):
+                yield f"event: token\ndata: {json.dumps(token)}\n\n"
+
+            latency_ms = (time.time() - t0) * 1000
+            yield f"event: done\ndata: {json.dumps({'latency_ms': latency_ms})}\n\n"
+
+            logger.info(
+                f"Streaming query completed in {latency_ms:.0f}ms, "
+                f"{len(sources)} sources retrieved"
+            )
+        except Exception as e:
+            logger.exception(f"Stream query failed: {e}")
+            yield f"event: error\ndata: {json.dumps({'detail': str(e)})}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
     )
 
 
