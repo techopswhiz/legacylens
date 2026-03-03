@@ -358,6 +358,8 @@
       <button class="mode-pill" data-mode="translate">Translate</button>
       <button class="mode-pill" data-mode="xref">X-Ref</button>
       <button class="mode-pill" data-mode="summarize">Summary</button>
+      <button class="mode-pill" data-mode="impact">Impact</button>
+      <button class="mode-pill" data-mode="docgen">Doc Gen</button>
     </div>
 
     <div class="mode-desc" id="mode-desc">Explain what the code does in plain English</div>
@@ -434,6 +436,8 @@
       translate: 'Show how this code would look in a modern language',
       xref: 'Find where variables, types, and functions are used',
       summarize: 'High-level overview of a module or file',
+      impact: 'Assess blast radius — what breaks if this code changes?',
+      docgen: 'Generate developer-facing documentation for the code',
     };
 
     let activeMode = 'explain';
@@ -497,6 +501,18 @@
         'Overview of the codegen module',
         'What does libcob/common.c do?',
         'Summarize the file I/O subsystem',
+      ],
+      impact: [
+        'What breaks if cobc_abort changes?',
+        'Impact of modifying the cob_module struct',
+        'What depends on the error reporting system?',
+        'Blast radius of changing the parser grammar',
+      ],
+      docgen: [
+        'Document the cobc_abort function',
+        'Generate docs for the codegen module',
+        'Document the cob_module struct fields',
+        'Write docs for the file I/O functions',
       ],
     };
 

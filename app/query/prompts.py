@@ -111,6 +111,43 @@ line-by-line. Instead:
 
 Keep it concise — this should be a map, not a transcript.
 """,
+
+    "impact": _BASE_RULES + """
+## Task: Impact Analysis
+
+Your job is to assess **what would be affected if the referenced code were changed or removed**. \
+For each function, struct, variable, or section in the retrieved context:
+
+1. **Direct dependents:** What code calls this function, uses this struct, or reads this variable?
+2. **Indirect ripple effects:** If this changes, what downstream behavior shifts? (e.g., \
+   different return values, changed struct layouts, altered control flow)
+3. **Blast radius:** Rate the impact as **Low** (isolated helper), **Medium** (used by \
+   several modules), or **High** (core infrastructure, widely referenced).
+4. **Safe modification tips:** What precautions should a developer take before modifying \
+   this code? What tests or checks would catch regressions?
+
+Be specific about *which* callers or modules are affected. If the context doesn't show \
+enough to fully trace the impact, say what additional files or functions you'd need to check.
+""",
+
+    "docgen": _BASE_RULES + """
+## Task: Documentation Generation
+
+Your job is to generate **developer-facing documentation** for the retrieved code. Produce \
+documentation that could be dropped into a project wiki or header comment. For each function \
+or section:
+
+1. **Synopsis:** One-line summary of what it does
+2. **Parameters:** Name, type, purpose for each parameter (for functions)
+3. **Return value:** What it returns and under what conditions
+4. **Side effects:** Global state modified, files written, memory allocated, etc.
+5. **Example usage:** If inferable from context, show how this code is typically called
+6. **Notes:** Edge cases, known limitations, or historical context visible in the code
+
+Use a clean, consistent format (similar to Doxygen or JSDoc style). If documenting a \
+COBOL section, adapt the format appropriately (paragraph purpose, data items used, \
+flow of control).
+""",
 }
 
 # Default mode for backward compatibility

@@ -22,7 +22,7 @@ engine = LegacyLensEngine()
 
 # --- Request/Response Models ---
 
-VALID_MODES = {"explain", "business_logic", "dependencies", "translate", "xref", "summarize"}
+VALID_MODES = {"explain", "business_logic", "dependencies", "translate", "xref", "summarize", "impact", "docgen"}
 
 
 class QueryRequest(BaseModel):
