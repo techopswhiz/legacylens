@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LegacyLens</title>
+  <style>
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --border: #2a2d3a;
+      --text: #e4e4e7;
+      --text-dim: #9ca3af;
+      --accent: #6366f1;
+      --accent-hover: #818cf8;
+      --green: #34d399;
+      --amber: #fbbf24;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 2rem 1.5rem;
+    }
+    header {
+      text-align: center;
+      margin-bottom: 2rem;
+    }
+    header h1 {
+      font-size: 2rem;
+      font-weight: 700;
+      background: linear-gradient(135deg, var(--accent), var(--green));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    header p {
+      color: var(--text-dim);
+      margin-top: 0.25rem;
+      font-size: 0.95rem;
+    }
+    .search-box {
+      display: flex;
+      gap: 0.75rem;
+      margin-bottom: 1.5rem;
+    }
+    .search-box input {
+      flex: 1;
+      padding: 0.75rem 1rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 1rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .search-box input:focus { border-color: var(--accent); }
+    .search-box input::placeholder { color: var(--text-dim); }
+    .search-box button {
+      padding: 0.75rem 1.5rem;
+      background: var(--accent);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+      white-space: nowrap;
+    }
+    .search-box button:hover:not(:disabled) { background: var(--accent-hover); }
+    .search-box button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .loading { text-align: center; padding: 2rem; color: var(--text-dim); display: none; }
+    .loading.active { display: block; }
+    .spinner {
+      width: 32px; height: 32px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto 0.75rem;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .error {
+      background: #3b1c1c;
+      border: 1px solid #7f1d1d;
+      border-radius: 8px;
+      padding: 1rem;
+      margin-bottom: 1.5rem;
+      display: none;
+    }
+    .error.active { display: block; }
+    .answer-section { display: none; }
+    .answer-section.active { display: block; }
+    .answer-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.25rem;
+      margin-bottom: 1.5rem;
+    }
+    .answer-card h2 {
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-dim);
+      margin-bottom: 0.75rem;
+    }
+    .answer-text {
+      font-size: 0.95rem;
+      line-height: 1.7;
+    }
+    .answer-text code {
+      background: var(--bg);
+      padding: 0.15em 0.35em;
+      border-radius: 4px;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 0.88em;
+    }
+    .answer-text pre {
+      background: var(--bg);
+      border-radius: 6px;
+      padding: 0.75rem 1rem;
+      overflow-x: auto;
+      margin: 0.75rem 0;
+    }
+    .answer-text pre code {
+      background: none;
+      padding: 0;
+      font-size: 0.82rem;
+      line-height: 1.5;
+    }
+    .answer-text h1, .answer-text h2, .answer-text h3 {
+      margin-top: 1rem;
+      margin-bottom: 0.5rem;
+      color: var(--text);
+    }
+    .answer-text h3 { font-size: 1rem; }
+    .answer-text p { margin-bottom: 0.5rem; }
+    .answer-text ul, .answer-text ol {
+      margin: 0.5rem 0;
+      padding-left: 1.5rem;
+    }
+    .answer-text li { margin-bottom: 0.25rem; }
+    .answer-text strong { color: var(--text); }
+    .latency {
+      text-align: right;
+      font-size: 0.8rem;
+      color: var(--text-dim);
+      margin-top: 0.5rem;
+    }
+    .sources-header {
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-dim);
+      margin-bottom: 0.75rem;
+    }
+    .source-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      margin-bottom: 0.75rem;
+      overflow: hidden;
+    }
+    .source-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.75rem 1rem;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .source-header:hover { background: rgba(255,255,255,0.03); }
+    .source-meta { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; }
+    .source-file {
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 0.88rem;
+      color: var(--accent);
+    }
+    .source-lines { font-size: 0.8rem; color: var(--text-dim); }
+    .source-func {
+      font-size: 0.8rem;
+      color: var(--green);
+      font-family: 'SF Mono', 'Fira Code', monospace;
+    }
+    .source-score {
+      font-size: 0.75rem;
+      padding: 0.2rem 0.5rem;
+      background: rgba(99, 102, 241, 0.15);
+      color: var(--accent);
+      border-radius: 4px;
+    }
+    .source-body {
+      display: none;
+      border-top: 1px solid var(--border);
+      padding: 0.75rem 1rem;
+    }
+    .source-card.expanded .source-body { display: block; }
+    .source-code {
+      background: var(--bg);
+      border-radius: 6px;
+      padding: 0.75rem 1rem;
+      overflow-x: auto;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 0.82rem;
+      line-height: 1.5;
+      white-space: pre;
+      max-height: 400px;
+      overflow-y: auto;
+    }
+    .chevron { transition: transform 0.2s; color: var(--text-dim); }
+    .source-card.expanded .chevron { transform: rotate(90deg); }
+    .examples { margin-top: 1.5rem; text-align: center; }
+    .examples p { font-size: 0.85rem; color: var(--text-dim); margin-bottom: 0.5rem; }
+    .example-chips { display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: center; }
+    .example-chip {
+      padding: 0.4rem 0.75rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      font-size: 0.82rem;
+      color: var(--text-dim);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .example-chip:hover { border-color: var(--accent); color: var(--text); }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>LegacyLens</h1>
+      <p>RAG-powered code exploration for the GnuCOBOL compiler</p>
+    </header>
+
+    <div class="search-box">
+      <input type="text" id="query-input" placeholder="Ask about the GnuCOBOL codebase..." autofocus>
+      <button id="search-btn">Search</button>
+    </div>
+
+    <div class="loading" id="loading">
+      <div class="spinner"></div>
+      <p>Searching codebase and generating answer...</p>
+    </div>
+
+    <div class="error" id="error"></div>
+
+    <div class="answer-section" id="results">
+      <div class="answer-card">
+        <h2>Answer</h2>
+        <div class="answer-text" id="answer-text"></div>
+        <div class="latency" id="latency"></div>
+      </div>
+      <div class="sources-header">Source Code Chunks</div>
+      <div id="sources-list"></div>
+    </div>
+
+    <div class="examples" id="examples">
+      <p>Try asking:</p>
+      <div class="example-chips" id="example-chips"></div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify/dist/purify.min.js"></script>
+  <script>
+    /* Safe DOM helpers — no innerHTML with user data */
+    function h(tag, attrs, ...children) {
+      const el = document.createElement(tag);
+      if (attrs) {
+        for (const [k, v] of Object.entries(attrs)) {
+          if (k === 'className') el.className = v;
+          else if (k.startsWith('on')) el.addEventListener(k.slice(2).toLowerCase(), v);
+          else el.setAttribute(k, v);
+        }
+      }
+      for (const child of children) {
+        if (typeof child === 'string') el.appendChild(document.createTextNode(child));
+        else if (child) el.appendChild(child);
+      }
+      return el;
+    }
+
+    const input = document.getElementById('query-input');
+    const btn = document.getElementById('search-btn');
+    const loading = document.getElementById('loading');
+    const errorDiv = document.getElementById('error');
+    const resultsDiv = document.getElementById('results');
+    const examplesDiv = document.getElementById('examples');
+
+    const EXAMPLES = [
+      'Where is the main entry point?',
+      'Find all file I/O operations',
+      'Show error handling patterns',
+      'Explain the codegen module',
+      'What does cobc_abort do?',
+      'How are COBOL programs compiled?',
+    ];
+
+    /* Render example chips safely */
+    const chipsContainer = document.getElementById('example-chips');
+    EXAMPLES.forEach(text => {
+      const chip = h('div', { className: 'example-chip', onClick: () => { input.value = text; submitQuery(); } }, text);
+      chipsContainer.appendChild(chip);
+    });
+
+    btn.addEventListener('click', submitQuery);
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !btn.disabled) submitQuery();
+    });
+
+    async function submitQuery() {
+      const query = input.value.trim();
+      if (!query) return;
+
+      btn.disabled = true;
+      loading.classList.add('active');
+      errorDiv.classList.remove('active');
+      resultsDiv.classList.remove('active');
+      examplesDiv.style.display = 'none';
+
+      try {
+        const res = await fetch('/api/query', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query, top_k: 5 }),
+        });
+
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.detail || 'HTTP ' + res.status);
+        }
+
+        const data = await res.json();
+        displayResults(data);
+      } catch (err) {
+        errorDiv.textContent = 'Error: ' + err.message;
+        errorDiv.classList.add('active');
+      } finally {
+        btn.disabled = false;
+        loading.classList.remove('active');
+      }
+    }
+
+    function renderMarkdown(text) {
+      /* Parse markdown and sanitize with DOMPurify */
+      const rawHtml = marked.parse(text);
+      return DOMPurify.sanitize(rawHtml);
+    }
+
+    function displayResults(data) {
+      /* Answer — render as sanitized markdown */
+      const answerEl = document.getElementById('answer-text');
+      answerEl.innerHTML = renderMarkdown(data.answer);
+      document.getElementById('latency').textContent = Math.round(data.latency_ms) + 'ms';
+
+      /* Sources */
+      const list = document.getElementById('sources-list');
+      list.textContent = '';
+
+      data.sources.forEach(src => {
+        const scorePercent = (src.score * 100).toFixed(1);
+
+        const metaChildren = [
+          h('span', { className: 'source-file' }, src.file_path),
+          h('span', { className: 'source-lines' }, 'L' + src.line_start + '-' + src.line_end),
+        ];
+        if (src.function_name) {
+          metaChildren.push(h('span', { className: 'source-func' }, src.function_name));
+        }
+
+        const card = h('div', { className: 'source-card' },
+          h('div', { className: 'source-header', onClick: function() { this.parentElement.classList.toggle('expanded'); } },
+            h('div', { className: 'source-meta' }, ...metaChildren),
+            h('div', { style: 'display:flex;align-items:center;gap:0.5rem' },
+              h('span', { className: 'source-score' }, scorePercent + '%'),
+              h('span', { className: 'chevron' }, '\u25B6'),
+            ),
+          ),
+          h('div', { className: 'source-body' },
+            h('pre', { className: 'source-code' }, src.text),
+          ),
+        );
+        list.appendChild(card);
+      });
+
+      resultsDiv.classList.add('active');
+    }
+  </script>
+</body>
+</html>

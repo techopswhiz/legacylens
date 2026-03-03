@@ -1,0 +1,29 @@
+# RAG Framework
+llama-index-core>=0.12.0
+llama-index-vector-stores-pinecone>=0.4.0
+llama-index-embeddings-voyageai>=0.3.0
+llama-index-llms-anthropic>=0.6.0
+
+# Vector DB
+pinecone-client>=5.0.0
+
+# LLM (xAI Grok via OpenAI-compatible API)
+llama-index-llms-openai-like>=0.4.0
+
+# API
+fastapi>=0.115.0
+uvicorn[standard]>=0.34.0
+
+# Config
+python-dotenv>=1.0.0
+
+# Chunking
+tree-sitter>=0.24.0
+tree-sitter-c>=0.23.0
+
+# Voyage SDK (needed by llama-index-embeddings-voyageai)
+voyageai>=0.2.0
+tokenizers>=0.20.0
+
+# Utilities
+httpx>=0.28.0

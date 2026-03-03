@@ -27,11 +27,11 @@
   <prod>TBD</prod>
  </urls>
  <stack>
-  <frontend>TBD</frontend>
-  <backend>TBD</backend>
-  <hosting>TBD</hosting>
-  <dev-tools>TBD</dev-tools>
-  <note>Read @package.json for details. Update above when stack changes.</note>
+  <frontend>Single HTML/JS page served by FastAPI (app/static/index.html)</frontend>
+  <backend>Python 3.12 / FastAPI / LlamaIndex / Pinecone / Voyage AI / Anthropic Claude</backend>
+  <hosting>Fly.io</hosting>
+  <dev-tools>pytest, tree-sitter</dev-tools>
+  <note>Read @requirements.txt for details.</note>
  </stack>
 </project>
 
@@ -63,26 +63,74 @@
 ## Build & Development Commands
 
 ```bash
-# Fill in for this assignment
-# TBD — decided during pre-search
+# Setup
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env  # then fill in API keys
+
+# Download codebase
+python scripts/download_codebase.py
+
+# Run ingestion (one-time, requires API keys)
+python scripts/ingest.py
+
+# Run dev server
+uvicorn app.main:app --reload
+
+# Run tests
+python -m pytest tests/ -v
+
+# Deploy
+fly secrets set PINECONE_API_KEY=... VOYAGE_API_KEY=... ANTHROPIC_API_KEY=...
+fly deploy
 ```
 
 ## Testing Setup
 
-<!-- Describe: test framework, config location, auth/mock requirements, key conventions -->
+- Framework: pytest
+- Tests in `tests/` directory
+- `test_chunker.py` — unit tests for C/COBOL/fallback chunking
+- `test_ingest.py` — loader and file discovery tests
+- `test_query.py` — API endpoint and frontend tests
 
 ## Architecture
 
-<!-- Replace with assignment-specific structure: main modules, routing, key components, server layout -->
+```
+app/
+  main.py          — FastAPI app, routes, lifespan (initializes query engine on startup)
+  config.py        — Env vars loaded from .env
+  ingest/
+    loader.py      — File discovery, filtering, Document creation
+    chunker.py     — Tree-sitter C chunker, regex COBOL chunker, fallback
+    pipeline.py    — Orchestrates: load → chunk → embed → upsert to Pinecone
+  query/
+    engine.py      — Connects to Pinecone, retrieves chunks, generates answers via Claude
+    prompts.py     — System prompt and query template
+  static/
+    index.html     — Single-file frontend (HTML + CSS + JS)
+scripts/
+  download_codebase.py  — Clone GnuCOBOL repo
+  ingest.py             — CLI entry point for ingestion
+```
 
 ## Environment Variables
 
-<!-- List required .env vars for client and server, with brief purpose -->
+| Variable | Purpose |
+|----------|---------|
+| `PINECONE_API_KEY` | Pinecone vector DB access |
+| `VOYAGE_API_KEY` | Voyage AI embeddings (voyage-code-3) |
+| `ANTHROPIC_API_KEY` | Claude Sonnet for answer generation |
+| `PINECONE_INDEX_NAME` | Index name (default: legacylens) |
+| `EMBEDDING_MODEL` | Embedding model (default: voyage-code-3) |
+| `LLM_MODEL` | LLM model (default: claude-sonnet-4-20250514) |
+| `TOP_K` | Default retrieval count (default: 5) |
 
 ## Planning Phase
 
 - Use context7 to look up library docs when needed. NEVER guess — check docs first.
 
-## TypeScript / Linting
+## Python / Linting
 
-<!-- Note strict mode, target, any project-specific rules -->
+- Python 3.12+ required
+- Type hints used throughout
+- No linter configured yet — add ruff if needed

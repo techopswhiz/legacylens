@@ -45,5 +45,8 @@ htmlcov/
 *.sqlite3
 chroma_data/
 
+# Downloaded codebase
+codebase/
+
 # Node (if any frontend)
 node_modules/
