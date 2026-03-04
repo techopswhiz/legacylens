@@ -125,21 +125,66 @@ class LegacyLensEngine:
             score=node_with_score.score or 0.0,
         )
 
+    @staticmethod
+    def _keyword_rerank(
+        query_text: str, nodes_with_scores: list, final_k: int
+    ) -> list:
+        """Re-rank by blending semantic score with keyword overlap.
+
+        Fetches more candidates than needed from Pinecone, then boosts
+        chunks that contain literal query terms (poor man's hybrid search).
+        """
+        import re
+        # Extract meaningful terms (3+ chars, alphanumeric/underscore)
+        query_terms = [
+            t.lower() for t in re.findall(r'\w{3,}', query_text)
+            if t.lower() not in {'the', 'this', 'what', 'where', 'how',
+                                  'does', 'are', 'all', 'from', 'with',
+                                  'for', 'that', 'show'}
+        ]
+        if not query_terms:
+            return nodes_with_scores[:final_k]
+
+        for nws in nodes_with_scores:
+            text_lower = nws.node.get_content().lower()
+            meta = nws.node.metadata or {}
+            func_name = (meta.get("function_name") or "").lower()
+            # Count how many query terms appear in the chunk text or function name
+            hits = sum(
+                1 for t in query_terms
+                if t in text_lower or t in func_name
+            )
+            keyword_score = hits / len(query_terms)
+            # Blend: 70% semantic + 30% keyword
+            nws.score = 0.7 * (nws.score or 0.0) + 0.3 * keyword_score
+
+        nodes_with_scores.sort(key=lambda x: x.score, reverse=True)
+        return nodes_with_scores[:final_k]
+
     def retrieve_chunks(
         self, query_text: str, top_k: int | None = None
     ) -> tuple[list[SourceChunk], list]:
         """Retrieve relevant chunks without generating an answer.
 
-        Returns (source_chunks, raw_nodes_with_scores) so callers can
-        pass raw nodes to stream_answer().
+        Fetches 3x candidates from Pinecone, then re-ranks with keyword
+        overlap to approximate hybrid search. Returns (source_chunks,
+        raw_nodes_with_scores) so callers can pass raw nodes to stream_answer().
         """
         if self._index is None:
             raise RuntimeError("Engine not initialized. Call initialize() first.")
 
-        retriever = self._index.as_retriever(
-            similarity_top_k=top_k or settings.TOP_K
-        )
+        final_k = top_k or settings.TOP_K
+        # Over-fetch for re-ranking headroom
+        fetch_k = final_k * 3
+
+        retriever = self._index.as_retriever(similarity_top_k=fetch_k)
         nodes_with_scores = retriever.retrieve(query_text)
+
+        # Re-rank with keyword overlap
+        nodes_with_scores = self._keyword_rerank(
+            query_text, nodes_with_scores, final_k
+        )
+
         sources = [self._node_to_source(n) for n in nodes_with_scores]
         return sources, nodes_with_scores
 
