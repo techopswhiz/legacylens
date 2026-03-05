@@ -165,7 +165,8 @@ async def query_stream(request: QueryRequest):
 
             logger.info(
                 f"Query completed in {latency_ms:.0f}ms "
-                f"(retrieval={timing['retrieval_ms']:.0f}ms, "
+                f"(embed={timing['embedding_ms']:.0f}ms, "
+                f"search={timing['search_ms']:.0f}ms, "
                 f"rerank={timing['rerank_ms']:.0f}ms, "
                 f"generation={generation_ms:.0f}ms), "
                 f"{len(sources)} sources retrieved"
@@ -230,7 +231,8 @@ async def query_stream(request: QueryRequest):
 
             logger.info(
                 f"Streaming query completed in {latency_ms:.0f}ms "
-                f"(retrieval={timing['retrieval_ms']:.0f}ms, "
+                f"(embed={timing['embedding_ms']:.0f}ms, "
+                f"search={timing['search_ms']:.0f}ms, "
                 f"rerank={timing['rerank_ms']:.0f}ms, "
                 f"generation={generation_ms:.0f}ms), "
                 f"{len(sources)} sources retrieved"

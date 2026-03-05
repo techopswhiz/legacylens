@@ -294,9 +294,30 @@ class LegacyLensEngine:
 
         retriever = self._index.as_retriever(similarity_top_k=fetch_k)
 
-        t0 = time.time()
-        nodes_with_scores = retriever.retrieve(query_text)
-        retrieval_ms = (time.time() - t0) * 1000
+        # Embed query (separate API call to Voyage AI)
+        t_embed = time.time()
+        query_embedding = Settings.embed_model.get_query_embedding(query_text)
+        embedding_ms = (time.time() - t_embed) * 1000
+
+        # Search Pinecone with pre-computed embedding
+        t_search = time.time()
+        from llama_index.core.vector_stores import VectorStoreQuery
+        vector_query = VectorStoreQuery(
+            query_embedding=query_embedding,
+            similarity_top_k=fetch_k,
+        )
+        query_result = retriever._vector_store.query(vector_query)
+
+        # Build NodeWithScore objects from raw results
+        from llama_index.core.schema import NodeWithScore, TextNode
+        nodes_with_scores = []
+        for node_id, similarity, text_node in zip(
+            query_result.ids or [],
+            query_result.similarities or [],
+            query_result.nodes or [],
+        ):
+            nodes_with_scores.append(NodeWithScore(node=text_node, score=similarity))
+        search_ms = (time.time() - t_search) * 1000
 
         # Re-rank with keyword overlap
         t1 = time.time()
@@ -306,7 +327,12 @@ class LegacyLensEngine:
         rerank_ms = (time.time() - t1) * 1000
 
         sources = [self._node_to_source(n) for n in nodes_with_scores]
-        timing = {"retrieval_ms": retrieval_ms, "rerank_ms": rerank_ms}
+        timing = {
+            "embedding_ms": embedding_ms,
+            "search_ms": search_ms,
+            "retrieval_ms": embedding_ms + search_ms,
+            "rerank_ms": rerank_ms,
+        }
         return sources, nodes_with_scores, timing
 
     def _build_prompt(
