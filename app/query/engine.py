@@ -57,13 +57,6 @@ MODEL_REGISTRY: dict[str, dict] = {
         "api_base": "https://api.x.ai/v1",
         "context_window": 131072,
     },
-    # --- Google / Gemini (OpenAI-compatible endpoint) ---
-    "gemini-2.5-flash": {
-        "label": "Gemini 2.5 Flash",
-        "provider": "google",
-        "api_base": "https://generativelanguage.googleapis.com/v1beta/openai",
-        "context_window": 1048576,
-    },
 }
 
 
@@ -167,7 +160,6 @@ class LegacyLensEngine:
         key_map = {
             "groq": settings.GROQ_API_KEY,
             "xai": settings.XAI_API_KEY,
-            "google": settings.GOOGLE_API_KEY,
         }
         key = key_map.get(provider, "")
         if not key:
