@@ -1,5 +1,5 @@
 app = 'legacylens'
-primary_region = 'iad'
+primary_region = 'dfw'
 
 [build]
 

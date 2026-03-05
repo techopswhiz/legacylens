@@ -18,6 +18,66 @@ from app.query.prompts import SYSTEM_PROMPT, QUERY_TEMPLATE, MODE_PROMPTS
 
 logger = logging.getLogger(__name__)
 
+# --- Model registry: all models the UI can switch between ---
+MODEL_REGISTRY: dict[str, dict] = {
+    "meta-llama/llama-4-scout-17b-16e-instruct": {
+        "label": "Llama 4 Scout",
+        "provider": "groq",
+        "api_base": "https://api.groq.com/openai/v1",
+        "context_window": 131072,
+    },
+    "llama-3.3-70b-versatile": {
+        "label": "Llama 3.3 70B",
+        "provider": "groq",
+        "api_base": "https://api.groq.com/openai/v1",
+        "context_window": 131072,
+    },
+    "llama-3.1-8b-instant": {
+        "label": "Llama 3.1 8B",
+        "provider": "groq",
+        "api_base": "https://api.groq.com/openai/v1",
+        "context_window": 131072,
+    },
+    "mixtral-8x7b-32768": {
+        "label": "Mixtral 8x7B",
+        "provider": "groq",
+        "api_base": "https://api.groq.com/openai/v1",
+        "context_window": 32768,
+    },
+    # --- xAI / Grok ---
+    "grok-3": {
+        "label": "Grok 3",
+        "provider": "xai",
+        "api_base": "https://api.x.ai/v1",
+        "context_window": 131072,
+    },
+    "grok-3-mini": {
+        "label": "Grok 3 Mini",
+        "provider": "xai",
+        "api_base": "https://api.x.ai/v1",
+        "context_window": 131072,
+    },
+    # --- Google / Gemini (OpenAI-compatible endpoint) ---
+    "gemini-2.5-flash": {
+        "label": "Gemini 2.5 Flash",
+        "provider": "google",
+        "api_base": "https://generativelanguage.googleapis.com/v1beta/openai",
+        "context_window": 1048576,
+    },
+    "gemini-2.5-pro": {
+        "label": "Gemini 2.5 Pro",
+        "provider": "google",
+        "api_base": "https://generativelanguage.googleapis.com/v1beta/openai",
+        "context_window": 1048576,
+    },
+    "gemini-2.0-flash": {
+        "label": "Gemini 2.0 Flash",
+        "provider": "google",
+        "api_base": "https://generativelanguage.googleapis.com/v1beta/openai",
+        "context_window": 1048576,
+    },
+}
+
 
 @dataclass
 class SourceChunk:
@@ -52,6 +112,7 @@ class LegacyLensEngine:
     def __init__(self):
         self._query_engine = None
         self._index = None
+        self._llm_cache: dict[str, OpenAILike] = {}
 
     def initialize(self):
         """Set up all components: Pinecone, embeddings, LLM, query engine."""
@@ -80,17 +141,19 @@ class LegacyLensEngine:
         embed_model._embed = types.MethodType(_patched_embed, embed_model)
         Settings.embed_model = embed_model
 
-        # LLM — use xAI Grok via OpenAI-compatible API
+        # LLM — configurable provider via OpenAI-compatible API (Groq, xAI, etc.)
         llm = OpenAILike(
             model=settings.LLM_MODEL,
-            api_key=settings.XAI_API_KEY,
-            api_base="https://api.x.ai/v1",
-            max_tokens=4096,
+            api_key=settings.llm_api_key,
+            api_base=settings.llm_api_base,
+            max_tokens=settings.LLM_MAX_TOKENS,
             temperature=0.1,
             is_chat_model=True,
-            context_window=131072,
+            context_window=settings.LLM_CONTEXT_WINDOW,
         )
         Settings.llm = llm
+        # Seed the LLM cache with the default model so _get_llm() won't re-create it
+        self._llm_cache[settings.LLM_MODEL] = llm
 
         # Connect to existing Pinecone index
         pc = Pinecone(api_key=settings.PINECONE_API_KEY)
@@ -109,6 +172,63 @@ class LegacyLensEngine:
         )
 
         logger.info("Query engine ready.")
+
+    @staticmethod
+    def _api_key_for_provider(provider: str) -> str:
+        """Map provider name to the corresponding API key from settings."""
+        key_map = {
+            "groq": settings.GROQ_API_KEY,
+            "xai": settings.XAI_API_KEY,
+            "google": settings.GOOGLE_API_KEY,
+        }
+        key = key_map.get(provider, "")
+        if not key:
+            raise ValueError(f"No API key configured for provider '{provider}'")
+        return key
+
+    def _get_llm(self, model_id: str) -> OpenAILike:
+        """Get or lazily create an LLM instance for the given model ID."""
+        if model_id in self._llm_cache:
+            return self._llm_cache[model_id]
+
+        if model_id not in MODEL_REGISTRY:
+            raise ValueError(
+                f"Unknown model '{model_id}'. "
+                f"Available: {list(MODEL_REGISTRY.keys())}"
+            )
+
+        info = MODEL_REGISTRY[model_id]
+        api_key = self._api_key_for_provider(info["provider"])
+
+        llm = OpenAILike(
+            model=model_id,
+            api_key=api_key,
+            api_base=info["api_base"],
+            max_tokens=settings.LLM_MAX_TOKENS,
+            temperature=0.1,
+            is_chat_model=True,
+            context_window=info["context_window"],
+        )
+        self._llm_cache[model_id] = llm
+        logger.info(f"Created LLM instance for {model_id}")
+        return llm
+
+    def get_available_models(self) -> list[dict]:
+        """Return models available for the UI, filtered to providers with keys."""
+        models = []
+        for model_id, info in MODEL_REGISTRY.items():
+            # Only include models whose provider has an API key set
+            try:
+                self._api_key_for_provider(info["provider"])
+            except ValueError:
+                continue
+            models.append({
+                "id": model_id,
+                "label": info["label"],
+                "provider": info["provider"],
+                "is_default": model_id == settings.LLM_MODEL,
+            })
+        return models
 
     def _node_to_source(self, node_with_score) -> SourceChunk:
         """Convert a LlamaIndex NodeWithScore to a SourceChunk."""
@@ -163,12 +283,13 @@ class LegacyLensEngine:
 
     def retrieve_chunks(
         self, query_text: str, top_k: int | None = None
-    ) -> tuple[list[SourceChunk], list]:
+    ) -> tuple[list[SourceChunk], list, dict]:
         """Retrieve relevant chunks without generating an answer.
 
         Fetches 3x candidates from Pinecone, then re-ranks with keyword
         overlap to approximate hybrid search. Returns (source_chunks,
-        raw_nodes_with_scores) so callers can pass raw nodes to stream_answer().
+        raw_nodes_with_scores, timing_dict) so callers can pass raw nodes
+        to stream_answer() and report per-stage latencies.
         """
         if self._index is None:
             raise RuntimeError("Engine not initialized. Call initialize() first.")
@@ -178,18 +299,25 @@ class LegacyLensEngine:
         fetch_k = final_k * 3
 
         retriever = self._index.as_retriever(similarity_top_k=fetch_k)
+
+        t0 = time.time()
         nodes_with_scores = retriever.retrieve(query_text)
+        retrieval_ms = (time.time() - t0) * 1000
 
         # Re-rank with keyword overlap
+        t1 = time.time()
         nodes_with_scores = self._keyword_rerank(
             query_text, nodes_with_scores, final_k
         )
+        rerank_ms = (time.time() - t1) * 1000
 
         sources = [self._node_to_source(n) for n in nodes_with_scores]
-        return sources, nodes_with_scores
+        timing = {"retrieval_ms": retrieval_ms, "rerank_ms": rerank_ms}
+        return sources, nodes_with_scores, timing
 
     def stream_answer(
-        self, query_text: str, nodes_with_scores: list, mode: str = "explain"
+        self, query_text: str, nodes_with_scores: list,
+        mode: str = "explain", model: str | None = None,
     ) -> Generator[str, None, None]:
         """Stream LLM answer token-by-token given pre-retrieved nodes."""
         # Build context string from nodes (same format LlamaIndex would use)
@@ -225,9 +353,10 @@ class LegacyLensEngine:
             )
         )
 
-        # Stream from LLM
+        # Stream from LLM (use per-request model if specified)
+        llm = self._get_llm(model) if model else Settings.llm
         messages = [ChatMessage(role="user", content=full_prompt)]
-        stream_resp = Settings.llm.stream_chat(messages)
+        stream_resp = llm.stream_chat(messages)
         for token in stream_resp:
             if token.delta:
                 yield token.delta

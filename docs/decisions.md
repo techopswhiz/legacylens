@@ -59,13 +59,13 @@ Tree-sitter has a COBOL grammar, but it's less mature than the C grammar and str
 
 ---
 
-## 4. LLM: The Journey from Claude to Grok
+## 4. LLM: The Journey from Claude → Grok → Groq
 
 **Original plan:** Claude Sonnet via Anthropic API (best code understanding, 200K context)
 
-**What happened:** LlamaIndex's Anthropic integration worked, but I had xAI API credits readily available and wanted to test. Switched to xAI Grok via `OpenAILike` adapter (OpenAI-compatible API).
+**Phase 1 — xAI Grok:** Had xAI API credits readily available. Switched to Grok via `OpenAILike` adapter (OpenAI-compatible API). Quality was good but latency was the bottleneck — 4-6s for generation alone, pushing total query time to ~6.3s (target: <3s).
 
-**Models tested:**
+**xAI models tested:**
 | Model | Latency | Notes |
 |-------|---------|-------|
 | `grok-3-mini` | ~6s | First choice, decent quality |
@@ -73,7 +73,19 @@ Tree-sitter has a COBOL grammar, but it's less mature than the C grammar and str
 | `grok-code-fast-1` | ~16s | Surprisingly slow despite "fast" name |
 | `grok-4-fast-non-reasoning` | ~15s | Also slow |
 
-**Tradeoff:** Grok is good but not Claude-tier for code analysis. If I had Anthropic API credits, Claude Sonnet would produce better answers. The LLM layer is fully swappable via LlamaIndex's abstraction — change one config value and the whole system uses a different provider.
+**Phase 2 — Groq (Llama 3.3 70B):** Groq runs open models on custom LPUs with sub-1s inference. Same `OpenAILike` adapter — just change API key, base URL, and model name. The config auto-detects the provider from whichever API key is set, so switching is a 3-env-var change.
+
+**Why Groq specifically:**
+- Free tier is sufficient for demo/grading
+- `llama-3.3-70b-versatile` has comparable quality to Grok for code analysis
+- ~0.5-1s generation vs 4-6s on xAI — this alone brings us under the 3s target
+- Same OpenAI-compatible API means zero code changes, just config
+
+**Expected total latency after switch:** Voyage embed ~1-1.5s + Pinecone ~0.3s + Groq ~0.5-1s = **~2-2.5s** (under 3s target).
+
+**Tradeoff:** We traded proprietary model quality (Grok/Claude) for open-source + speed (Llama). For code analysis, the quality gap is smaller than for general reasoning. And the latency improvement is worth it — going from 6.3s to 2.5s is night and day for UX.
+
+**Architecture insight:** The LLM layer is fully provider-agnostic. The config has `llm_api_key` and `llm_api_base` properties that auto-detect from whichever API key is set (Groq > xAI > Anthropic). No code changes needed to swap providers — just set different env vars.
 
 **What the interviewer might ask:** "Why not use a local model?" — Explored this (Ollama branch). DeepSeek Coder and CodeLlama would work locally but not on Fly.io (512MB RAM, no GPU). Would need a separate inference server. Not worth the complexity for a demo.
 
@@ -87,7 +99,7 @@ Tree-sitter has a COBOL grammar, but it's less mature than the C grammar and str
 
 **Phase 2 — Generation (~4-6s):** Build context from retrieved nodes → stream LLM tokens one at a time as SSE `token` events.
 
-**Why this matters:** Total end-to-end is 6-8 seconds, which exceeds the 3-second target. But the user sees meaningful content at the 2-second mark (source files, line numbers, relevance scores). The answer builds in front of them. Perceived latency is dramatically lower than actual latency.
+**Why this matters:** With Groq, total end-to-end is ~2-2.5s (under the 3s target). But even before the switch (when it was 6-8s on Grok), the user saw meaningful content at the 2-second mark (source files, line numbers, relevance scores). The answer builds in front of them. Perceived latency is dramatically lower than actual latency.
 
 **Tradeoff:** More complex than a single `POST` → JSON response. The frontend needs to handle a `ReadableStream`, parse SSE events, and incrementally render markdown. But the UX improvement is substantial.
 
@@ -138,10 +150,10 @@ Tree-sitter has a COBOL grammar, but it's less mature than the C grammar and str
 **Impact:** Lower granularity for those files, but no data loss. The content is still in Pinecone.
 
 ### Latency
-**Problem:** 6-8 seconds end-to-end exceeds the 3-second assignment target.
-**Breakdown:** Voyage embed ~1-1.5s, Pinecone ~0.3-0.5s, LLM generation ~4-6s.
-**What I can't control:** LLM inference speed is set by the provider. Streaming mitigates perceived latency but doesn't change actual time.
-**What I could optimize:** Cache Voyage embeddings for repeated queries (~1s saved). Use a faster LLM (~2-3s saved but lower quality). Reduce context (fewer chunks, shorter prompt).
+**Problem (resolved):** Was 6-8 seconds end-to-end on xAI Grok, exceeding the 3-second target.
+**Breakdown before:** Voyage embed ~1-1.5s, Pinecone ~0.3-0.5s, xAI Grok generation ~4-6s.
+**Fix:** Switched to Groq (Llama 3.3 70B on custom LPUs). Generation dropped to ~0.5-1s. Total now ~2-2.5s.
+**Further optimization if needed:** Cache Voyage embeddings for repeated queries (~1s saved). Reduce context (fewer chunks, shorter prompt).
 
 ---
 
@@ -189,7 +201,7 @@ The codebase is only needed during ingestion. Pinecone already has all the vecto
 | **Hierarchical chunking** | File-level + function-level for different query types | 1 day |
 | **Evaluation harness** | Automated precision/recall testing with ground truth | 1 day |
 | **Caching layer** | Cache Voyage embeddings + Pinecone results for repeat queries | 4 hours |
-| **Claude as LLM** | Better code understanding than Grok | 5 minutes (config change) |
+| **Claude as LLM** | Better code understanding than Groq/Llama | 5 minutes (config change) |
 
 ---
 
@@ -219,3 +231,14 @@ The system prompt explicitly says: "If the retrieved code chunks don't contain e
 
 **"How would you scale this to 10 codebases?"**
 Pinecone supports metadata filtering. Each codebase gets a `codebase` metadata field. At query time, filter by codebase. One index handles all of them. Alternatively, use Pinecone namespaces (one per codebase). The rest of the pipeline is unchanged.
+
+---
+
+## 13. Edge Cases
+
+| Edge Case | What Happens | How We Handle It |
+|-----------|-------------|-----------------|
+| **C file with broken syntax** (e.g., heavy preprocessor macros that confuse tree-sitter) | AST parse succeeds but misidentifies function boundaries, or fails entirely | Catch the exception, fall back to treating the whole file as one chunk (`file_fallback`). No data lost, just coarser granularity. |
+| **Oversized function** (500+ line C function that exceeds chunk limits) | Single chunk is >3000 chars, too large for useful retrieval | Auto-split with SentenceSplitter, preserving original metadata. Chunk type gets `_split` suffix so we know it was subdivided. |
+| **Query with no good matches** (e.g., "What's the weather?") | Pinecone returns 5 chunks anyway — all with low similarity scores (<40%) | LLM system prompt says "if context is insufficient, say so." Relevance scores are shown to the user so they can see the low confidence. |
+| **Non-UTF-8 encoded source files** | `decode()` would crash during chunking | All file reads use `errors="replace"`, substituting bad bytes with `�`. Binary files are filtered out entirely during file discovery. |

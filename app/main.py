@@ -29,6 +29,7 @@ class QueryRequest(BaseModel):
     query: str = Field(..., min_length=1, max_length=2000)
     top_k: int = Field(default=5, ge=1, le=20)
     mode: str = Field(default="explain")
+    model: str | None = Field(default=None, description="LLM model ID (from /api/models)")
 
 
 class SourceResponse(BaseModel):
@@ -149,8 +150,12 @@ async def query_stream(request: QueryRequest):
         t0 = time.time()
 
         try:
-            # Phase 1: Retrieve chunks (embed query + Pinecone search)
-            sources, nodes = engine.retrieve_chunks(request.query, request.top_k)
+            # Phase 1: Retrieve chunks (embed query + Pinecone search + rerank)
+            sources, nodes, timing = engine.retrieve_chunks(request.query, request.top_k)
+
+            # Emit per-stage timing before sources
+            yield f"event: timing\ndata: {json.dumps(timing)}\n\n"
+
             sources_data = [
                 {
                     "file_path": s.file_path,
@@ -167,15 +172,22 @@ async def query_stream(request: QueryRequest):
             yield f"event: sources\ndata: {json.dumps(sources_data)}\n\n"
 
             # Phase 2: Stream LLM answer token by token
+            t_gen = time.time()
             mode = request.mode if request.mode in VALID_MODES else "explain"
-            for token in engine.stream_answer(request.query, nodes, mode=mode):
+            for token in engine.stream_answer(
+                request.query, nodes, mode=mode, model=request.model,
+            ):
                 yield f"event: token\ndata: {json.dumps(token)}\n\n"
+            generation_ms = (time.time() - t_gen) * 1000
 
             latency_ms = (time.time() - t0) * 1000
-            yield f"event: done\ndata: {json.dumps({'latency_ms': latency_ms})}\n\n"
+            yield f"event: done\ndata: {json.dumps({'latency_ms': latency_ms, 'generation_ms': generation_ms})}\n\n"
 
             logger.info(
-                f"Streaming query completed in {latency_ms:.0f}ms, "
+                f"Streaming query completed in {latency_ms:.0f}ms "
+                f"(retrieval={timing['retrieval_ms']:.0f}ms, "
+                f"rerank={timing['rerank_ms']:.0f}ms, "
+                f"generation={generation_ms:.0f}ms), "
                 f"{len(sources)} sources retrieved"
             )
         except Exception as e:
@@ -200,6 +212,12 @@ async def health_check():
         status="ok",
         engine_ready=engine._query_engine is not None,
     )
+
+
+@app.get("/api/models")
+async def list_models():
+    """Return available LLM models for the UI dropdown."""
+    return engine.get_available_models()
 
 
 # Serve static frontend

@@ -7,7 +7,7 @@ llama-index-llms-anthropic>=0.6.0
 # Vector DB
 pinecone-client>=5.0.0
 
-# LLM (xAI Grok via OpenAI-compatible API)
+# LLM (Groq / xAI / any OpenAI-compatible API)
 llama-index-llms-openai-like>=0.4.0
 
 # API
