@@ -17,11 +17,11 @@ Voyage Code-3 free tier includes 200M tokens. We used ~6% of the free allocation
 
 | Item | Queries | Est. Tokens | Cost |
 |------|---------|-------------|------|
-| Dev testing (xAI Grok) | ~150 | ~600K in + ~300K out | ~$1.50 |
-| Production queries (demo users) | ~50 | ~200K in + ~100K out | ~$0.50 |
-| **Total LLM** | **~200** | **~1.2M** | **~$2.00** |
+| Dev testing (Groq Llama 3.3 70B) | ~150 | ~600K in + ~300K out | ~$0.60 |
+| Production queries (demo users) | ~50 | ~200K in + ~100K out | ~$0.20 |
+| **Total LLM** | **~200** | **~1.2M** | **~$0.80** |
 
-xAI Grok pricing: ~$2/M input tokens, ~$10/M output tokens (estimated from xAI published rates).
+Groq pricing: ~$0.59/M input tokens, ~$0.79/M output tokens.
 
 ### Infrastructure Costs
 
@@ -44,10 +44,10 @@ xAI Grok pricing: ~$2/M input tokens, ~$10/M output tokens (estimated from xAI p
 | Category | Cost |
 |----------|------|
 | Embeddings | $0.00 |
-| LLM API | ~$2.00 |
+| LLM API | ~$0.80 |
 | Infrastructure | $0.00 |
 | Dev tools | ~$100/mo (subscription, not project-specific) |
-| **Project-specific total** | **~$2.00** |
+| **Project-specific total** | **~$0.80** |
 
 ---
 
@@ -67,9 +67,9 @@ xAI Grok pricing: ~$2/M input tokens, ~$10/M output tokens (estimated from xAI p
 |-----------|--------|-----------|---------------|
 | Query embedding (Voyage) | 50 | $0.06/M tokens | $0.000003 |
 | Pinecone search | 1 query | ~$0.000008/query | $0.000008 |
-| LLM input (xAI Grok) | 5,000 | $2/M tokens | $0.01 |
-| LLM output (xAI Grok) | 1,000 | $10/M tokens | $0.01 |
-| **Total per query** | | | **~$0.02** |
+| LLM input (Groq Llama 3.3 70B) | 5,000 | $0.59/M tokens | $0.003 |
+| LLM output (Groq Llama 3.3 70B) | 1,000 | $0.79/M tokens | $0.001 |
+| **Total per query** | | | **~$0.004** |
 
 ### Monthly Projections
 
@@ -78,35 +78,34 @@ xAI Grok pricing: ~$2/M input tokens, ~$10/M output tokens (estimated from xAI p
 | **Queries/month** | 15,000 | 150,000 | 1,500,000 | 15,000,000 |
 | **Embedding (Voyage)** | $0.05 | $0.45 | $4.50 | $45 |
 | **Pinecone** | $0 (free) | $70/mo (Standard) | $70 + usage | $230+ (Enterprise) |
-| **LLM (xAI Grok)** | $300 | $3,000 | $30,000 | $300,000 |
+| **LLM (Groq Llama 3.3 70B)** | $60 | $600 | $6,000 | $60,000 |
 | **Fly.io compute** | $5 | $15 | $60 | $200+ |
-| **Total/month** | **~$305** | **~$3,085** | **~$30,135** | **~$300,475** |
-| **Per-user/month** | $3.05 | $3.09 | $3.01 | $3.00 |
+| **Total/month** | **~$65** | **~$685** | **~$6,135** | **~$60,475** |
+| **Per-user/month** | $0.65 | $0.69 | $0.61 | $0.60 |
 
 ### Key Observations
 
-1. **LLM cost dominates.** At every scale, 98%+ of cost is LLM inference. Embedding and vector search are negligible.
+1. **LLM cost dominates but at a much lower level.** At every scale, LLM inference is the largest cost component, but Groq's pricing (~$0.59/$0.79 per M tokens) is dramatically cheaper than proprietary alternatives.
 
 2. **Linear scaling.** Cost scales almost perfectly linearly with users because each query requires a fresh LLM call. There's no caching benefit for unique code questions.
 
-3. **Per-user cost is flat (~$3/mo).** This makes pricing straightforward: a $5-10/mo subscription easily covers costs with margin.
+3. **Per-user cost is ~$0.65/mo.** A $2-5/mo subscription covers costs with healthy margin. Compared to proprietary LLMs at ~$3/mo per user, Groq makes the unit economics viable at any scale.
 
 ### Cost Optimization Strategies
 
 | Strategy | Savings | Tradeoff |
 |----------|---------|----------|
-| **Switch to smaller LLM** (GPT-4o-mini, Haiku) | 80-90% on LLM costs | Lower answer quality, especially for complex code analysis |
+| **Switch to smaller model** (Llama 3.1 8B on Groq) | 60-70% on LLM costs | Lower answer quality, especially for complex code analysis |
 | **Response caching** (exact query dedup) | 10-20% | Stale answers if codebase updates; cache key design is tricky |
 | **Reduce context window** (top_k=3 instead of 5) | 30-40% on LLM input | Fewer source chunks, may miss relevant code |
 | **Streaming token limits** (cap output at 500 tokens) | 50% on LLM output | Truncated explanations for complex queries |
 | **Rate limiting** (10 queries/user/day) | Caps exposure | Limits power users |
-| **Local/self-hosted LLM** (Llama, Mistral) | 90%+ on LLM costs | Requires GPU infrastructure ($200-500/mo for decent inference), higher latency |
 
-### Optimized Projection (with GPT-4o-mini + top_k=3)
+### Optimized Projection (with Llama 3.1 8B on Groq + top_k=3)
 
 | | 100 Users | 1,000 Users | 10,000 Users | 100,000 Users |
 |---|-----------|-------------|--------------|---------------|
-| **Total/month** | **~$35** | **~$320** | **~$3,100** | **~$31,000** |
-| **Per-user/month** | $0.35 | $0.32 | $0.31 | $0.31 |
+| **Total/month** | **~$25** | **~$230** | **~$2,200** | **~$22,000** |
+| **Per-user/month** | $0.25 | $0.23 | $0.22 | $0.22 |
 
-Switching to a cheaper LLM drops per-user cost from $3/mo to $0.31/mo — a 10x reduction — at the expense of answer quality.
+Switching to a smaller model on Groq drops per-user cost from $0.65/mo to ~$0.22/mo — a 3x reduction — at the expense of answer quality.

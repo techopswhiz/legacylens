@@ -59,33 +59,20 @@ Tree-sitter has a COBOL grammar, but it's less mature than the C grammar and str
 
 ---
 
-## 4. LLM: The Journey from Claude → Grok → Groq
+## 4. LLM: Why Groq (Llama 3.3 70B)?
 
-**Original plan:** Claude Sonnet via Anthropic API (best code understanding, 200K context)
+**Decision:** Groq `llama-3.3-70b-versatile` via OpenAI-compatible API
 
-**Phase 1 — xAI Grok:** Had xAI API credits readily available. Switched to Grok via `OpenAILike` adapter (OpenAI-compatible API). Quality was good but latency was the bottleneck — 4-6s for generation alone, pushing total query time to ~6.3s (target: <3s).
+**Why Groq:**
+- Sub-1s inference (~0.5-1s generation) thanks to Groq's custom LPU hardware — brings total query latency to ~2-2.5s, well under the 3s target
+- OpenAI-compatible API — uses the same `OpenAILike` adapter as any other provider. Zero custom integration code.
+- Llama 3.3 70B has strong code understanding — comparable to proprietary models for code analysis tasks
+- Cost-effective: ~$0.59/M input, ~$0.79/M output (~$0.004 per query vs ~$0.02 with proprietary models)
+- Free tier sufficient for demo/grading
 
-**xAI models tested:**
-| Model | Latency | Notes |
-|-------|---------|-------|
-| `grok-3-mini` | ~6s | First choice, decent quality |
-| `grok-4-1-fast-non-reasoning` | ~6s | Similar speed, slightly better quality |
-| `grok-code-fast-1` | ~16s | Surprisingly slow despite "fast" name |
-| `grok-4-fast-non-reasoning` | ~15s | Also slow |
+**Provider-agnostic architecture:** The LLM layer auto-detects from whichever API key is set (Groq > xAI > Anthropic). Switching providers is a config change — set different env vars, no code modifications. This made it trivial to evaluate multiple providers during development.
 
-**Phase 2 — Groq (Llama 3.3 70B):** Groq runs open models on custom LPUs with sub-1s inference. Same `OpenAILike` adapter — just change API key, base URL, and model name. The config auto-detects the provider from whichever API key is set, so switching is a 3-env-var change.
-
-**Why Groq specifically:**
-- Free tier is sufficient for demo/grading
-- `llama-3.3-70b-versatile` has comparable quality to Grok for code analysis
-- ~0.5-1s generation vs 4-6s on xAI — this alone brings us under the 3s target
-- Same OpenAI-compatible API means zero code changes, just config
-
-**Expected total latency after switch:** Voyage embed ~1-1.5s + Pinecone ~0.3s + Groq ~0.5-1s = **~2-2.5s** (under 3s target).
-
-**Tradeoff:** We traded proprietary model quality (Grok/Claude) for open-source + speed (Llama). For code analysis, the quality gap is smaller than for general reasoning. And the latency improvement is worth it — going from 6.3s to 2.5s is night and day for UX.
-
-**Architecture insight:** The LLM layer is fully provider-agnostic. The config has `llm_api_key` and `llm_api_base` properties that auto-detect from whichever API key is set (Groq > xAI > Anthropic). No code changes needed to swap providers — just set different env vars.
+**Tradeoff:** Open-source model (Llama 3.3 70B) vs proprietary (Claude, Grok). For code analysis, the quality gap is smaller than for general reasoning. The 5x latency improvement and 5x cost reduction make this a clear win for this use case.
 
 **What the interviewer might ask:** "Why not use a local model?" — Explored this (Ollama branch). DeepSeek Coder and CodeLlama would work locally but not on Fly.io (512MB RAM, no GPU). Would need a separate inference server. Not worth the complexity for a demo.
 
@@ -95,13 +82,13 @@ Tree-sitter has a COBOL grammar, but it's less mature than the C grammar and str
 
 **Decision:** Two-phase SSE streaming instead of single blocking response.
 
-**Phase 1 — Retrieval (~2s):** Embed query with Voyage → search Pinecone → return source chunks immediately as an SSE `sources` event.
+**Phase 1 — Retrieval (~2s):** Embed query with Voyage -> search Pinecone -> return source chunks immediately as an SSE `sources` event.
 
-**Phase 2 — Generation (~4-6s):** Build context from retrieved nodes → stream LLM tokens one at a time as SSE `token` events.
+**Phase 2 — Generation (~0.5-1s):** Build context from retrieved nodes -> stream LLM tokens one at a time as SSE `token` events.
 
-**Why this matters:** With Groq, total end-to-end is ~2-2.5s (under the 3s target). But even before the switch (when it was 6-8s on Grok), the user saw meaningful content at the 2-second mark (source files, line numbers, relevance scores). The answer builds in front of them. Perceived latency is dramatically lower than actual latency.
+**Total end-to-end: ~2-2.5s.** User sees source chunks at the ~2s mark, with the LLM answer streaming almost immediately after.
 
-**Tradeoff:** More complex than a single `POST` → JSON response. The frontend needs to handle a `ReadableStream`, parse SSE events, and incrementally render markdown. But the UX improvement is substantial.
+**Tradeoff:** More complex than a single `POST` -> JSON response. The frontend needs to handle a `ReadableStream`, parse SSE events, and incrementally render markdown. But the UX improvement is substantial.
 
 **Why SSE instead of WebSockets:** SSE is simpler (one-directional, auto-reconnect, works over HTTP/1.1). We don't need bidirectional communication — the client sends a query and receives a stream back. WebSockets would be overkill.
 
@@ -112,7 +99,7 @@ Tree-sitter has a COBOL grammar, but it's less mature than the C grammar and str
 **Decision:** All 8 analysis modes share the same retrieval pipeline. Only the LLM system prompt changes.
 
 **Why not separate pipelines per mode?**
-- The retrieval step (Voyage embed → Pinecone search) is mode-agnostic. The top-5 most relevant chunks for "cobc_abort" are the same whether you want an explanation or a dependency map.
+- The retrieval step (Voyage embed -> Pinecone search) is mode-agnostic. The top-5 most relevant chunks for "cobc_abort" are the same whether you want an explanation or a dependency map.
 - Building mode-specific retrieval (e.g., a dependency graph index for the "dependencies" mode) would be more accurate but would require separate data structures, indexing, and maintenance. Not worth it for a demo.
 
 **Which modes are from the assignment vs. added:**
@@ -150,10 +137,9 @@ Tree-sitter has a COBOL grammar, but it's less mature than the C grammar and str
 **Impact:** Lower granularity for those files, but no data loss. The content is still in Pinecone.
 
 ### Latency
-**Problem (resolved):** Was 6-8 seconds end-to-end on xAI Grok, exceeding the 3-second target.
-**Breakdown before:** Voyage embed ~1-1.5s, Pinecone ~0.3-0.5s, xAI Grok generation ~4-6s.
-**Fix:** Switched to Groq (Llama 3.3 70B on custom LPUs). Generation dropped to ~0.5-1s. Total now ~2-2.5s.
-**Further optimization if needed:** Cache Voyage embeddings for repeated queries (~1s saved). Reduce context (fewer chunks, shorter prompt).
+**Current state:** ~2-2.5s end-to-end, comfortably under the 3-second target.
+**Breakdown:** Voyage embedding ~1-1.5s, Pinecone search ~0.3s, Groq generation ~0.5-1s.
+**Optimization if needed:** Cache Voyage embeddings for repeated queries (~1s saved). Reduce context (fewer chunks, shorter prompt).
 
 ---
 
@@ -207,18 +193,20 @@ The codebase is only needed during ingestion. Pinecone already has all the vecto
 
 ## 11. Cost Awareness
 
-**Development cost:** ~$2 (LLM API only). Everything else is free tier.
+**Development cost:** ~$0.80 (LLM API only). Everything else is free tier.
 
-**The cost cliff:** At scale, LLM inference is 98%+ of total cost. At 100 users doing 5 queries/day, it's ~$300/month. At 100K users it's $300K/month. The fix is a cheaper LLM (GPT-4o-mini drops it to $30K) or a local model (Llama on GPU infra, ~$500/month fixed cost but handles unlimited queries).
+**Per-query cost:** ~$0.004 (Groq at ~$0.59/M input, ~$0.79/M output). This is ~5x cheaper than proprietary LLMs.
 
-**Key insight for the interview:** Embeddings are a one-time cost. Vector DB storage is cheap. LLM per-query cost is what kills you at scale. The architecture should be designed to minimize LLM calls (caching, shorter prompts, smaller models for simple queries).
+**The cost cliff:** At scale, LLM inference is the largest cost component, but Groq's pricing makes it manageable. At 100 users doing 5 queries/day, it's ~$65/month. At 100K users it's ~$60K/month. Further optimization: smaller model (Llama 3.1 8B on Groq drops it to ~$22K) or caching.
+
+**Key insight for the interview:** Embeddings are a one-time cost. Vector DB storage is cheap. LLM per-query cost is what scales with users — but with Groq's pricing, per-user cost is ~$0.65/mo, making a $2-5/mo subscription viable at any scale.
 
 ---
 
 ## 12. Technical Choices They Might Probe
 
 **"Why LlamaIndex over LangChain?"**
-LlamaIndex is purpose-built for document-to-index-to-query RAG. LangChain is broader (agents, chains, tools). For this use case — ingest documents, build an index, query it — LlamaIndex's API maps directly: `Document → TextNode → VectorStoreIndex → QueryEngine`. Less abstraction overhead.
+LlamaIndex is purpose-built for document-to-index-to-query RAG. LangChain is broader (agents, chains, tools). For this use case — ingest documents, build an index, query it — LlamaIndex's API maps directly: `Document -> TextNode -> VectorStoreIndex -> QueryEngine`. Less abstraction overhead.
 
 **"Why not use LangChain's text splitters?"**
 I needed function-level granularity. LangChain's `RecursiveCharacterTextSplitter` is character-based, not AST-aware. Their `Language` splitter exists but gives less control than walking the tree-sitter AST directly.
@@ -241,4 +229,4 @@ Pinecone supports metadata filtering. Each codebase gets a `codebase` metadata f
 | **C file with broken syntax** (e.g., heavy preprocessor macros that confuse tree-sitter) | AST parse succeeds but misidentifies function boundaries, or fails entirely | Catch the exception, fall back to treating the whole file as one chunk (`file_fallback`). No data lost, just coarser granularity. |
 | **Oversized function** (500+ line C function that exceeds chunk limits) | Single chunk is >3000 chars, too large for useful retrieval | Auto-split with SentenceSplitter, preserving original metadata. Chunk type gets `_split` suffix so we know it was subdivided. |
 | **Query with no good matches** (e.g., "What's the weather?") | Pinecone returns 5 chunks anyway — all with low similarity scores (<40%) | LLM system prompt says "if context is insufficient, say so." Relevance scores are shown to the user so they can see the low confidence. |
-| **Non-UTF-8 encoded source files** | `decode()` would crash during chunking | All file reads use `errors="replace"`, substituting bad bytes with `�`. Binary files are filtered out entirely during file discovery. |
+| **Non-UTF-8 encoded source files** | `decode()` would crash during chunking | All file reads use `errors="replace"`, substituting bad bytes with `U+FFFD`. Binary files are filtered out entirely during file discovery. |

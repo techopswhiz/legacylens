@@ -28,7 +28,7 @@ User Query
                                                     │
                                                     ▼
                                             ┌──────────────┐
-                                            │  xAI Grok    │
+                                            │  Groq LLM    │
                                             │  LLM Answer  │
                                             │  (streaming)  │
                                             └──────────────┘
@@ -38,7 +38,7 @@ User Query
 |-----------|-----------|
 | Vector DB | Pinecone (managed, free tier) |
 | Embeddings | Voyage `voyage-code-3` (1024 dims) |
-| LLM | xAI Grok via OpenAI-compatible API |
+| LLM | Groq (Llama 3.3 70B) via OpenAI-compatible API |
 | Framework | LlamaIndex |
 | Backend | Python / FastAPI |
 | Frontend | Single HTML file (no build step) |
@@ -50,7 +50,7 @@ User Query
 ### Prerequisites
 
 - Python 3.12+
-- API keys for Pinecone, Voyage AI, and xAI (or Anthropic)
+- API keys for Pinecone, Voyage AI, and Groq (or xAI/Anthropic as fallback)
 
 ### Install
 
@@ -76,7 +76,7 @@ Required environment variables:
 |----------|---------|
 | `PINECONE_API_KEY` | Pinecone vector database access |
 | `VOYAGE_API_KEY` | Voyage AI embedding model |
-| `XAI_API_KEY` | xAI Grok LLM (or use `ANTHROPIC_API_KEY` for Claude) |
+| `GROQ_API_KEY` | Groq LLM (or use `XAI_API_KEY` / `ANTHROPIC_API_KEY` as fallback) |
 | `PINECONE_INDEX_NAME` | Index name (default: `legacylens`) |
 
 ### Ingest a Codebase
@@ -107,7 +107,7 @@ Open [http://localhost:8080](http://localhost:8080).
 
 ```bash
 fly launch
-fly secrets set PINECONE_API_KEY=... VOYAGE_API_KEY=... XAI_API_KEY=...
+fly secrets set PINECONE_API_KEY=... VOYAGE_API_KEY=... GROQ_API_KEY=...
 fly deploy
 ```
 
@@ -159,7 +159,7 @@ Server-Sent Events endpoint for streaming queries.
 **Events:**
 - `event: sources` — JSON array of source chunks (sent after retrieval, ~2s)
 - `event: token` — Single LLM token string (repeated)
-- `event: done` — `{"latency_ms": 6200}`
+- `event: done` — `{"latency_ms": 2300}`
 - `event: error` — `{"detail": "error message"}`
 
 **Modes:** `explain`, `business_logic`, `dependencies`, `translate`, `xref`, `summarize`, `impact`, `docgen`

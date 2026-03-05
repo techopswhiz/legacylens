@@ -28,7 +28,7 @@
  </urls>
  <stack>
   <frontend>Single HTML/JS page served by FastAPI (app/static/index.html)</frontend>
-  <backend>Python 3.12 / FastAPI / LlamaIndex / Pinecone / Voyage AI / Anthropic Claude</backend>
+  <backend>Python 3.12 / FastAPI / LlamaIndex / Pinecone / Voyage AI / Groq (Llama 3.3 70B)</backend>
   <hosting>Fly.io</hosting>
   <dev-tools>pytest, tree-sitter</dev-tools>
   <note>Read @requirements.txt for details.</note>
@@ -81,7 +81,7 @@ uvicorn app.main:app --reload
 python -m pytest tests/ -v
 
 # Deploy
-fly secrets set PINECONE_API_KEY=... VOYAGE_API_KEY=... ANTHROPIC_API_KEY=...
+fly secrets set PINECONE_API_KEY=... VOYAGE_API_KEY=... GROQ_API_KEY=...
 fly deploy
 ```
 
@@ -104,7 +104,7 @@ app/
     chunker.py     — Tree-sitter C chunker, regex COBOL chunker, fallback
     pipeline.py    — Orchestrates: load → chunk → embed → upsert to Pinecone
   query/
-    engine.py      — Connects to Pinecone, retrieves chunks, generates answers via Claude
+    engine.py      — Connects to Pinecone, retrieves chunks, generates answers via Groq LLM
     prompts.py     — System prompt and query template
   static/
     index.html     — Single-file frontend (HTML + CSS + JS)
@@ -119,10 +119,10 @@ scripts/
 |----------|---------|
 | `PINECONE_API_KEY` | Pinecone vector DB access |
 | `VOYAGE_API_KEY` | Voyage AI embeddings (voyage-code-3) |
-| `ANTHROPIC_API_KEY` | Claude Sonnet for answer generation |
+| `GROQ_API_KEY` | Groq LLM for answer generation (or `XAI_API_KEY` / `ANTHROPIC_API_KEY` as fallback) |
 | `PINECONE_INDEX_NAME` | Index name (default: legacylens) |
 | `EMBEDDING_MODEL` | Embedding model (default: voyage-code-3) |
-| `LLM_MODEL` | LLM model (default: claude-sonnet-4-20250514) |
+| `LLM_MODEL` | LLM model (default: llama-3.3-70b-versatile) |
 | `TOP_K` | Default retrieval count (default: 5) |
 
 ## Planning Phase

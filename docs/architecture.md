@@ -87,9 +87,9 @@ Three-tier strategy based on file language:
    headers (file path, lines, language, function name)
          │
 6. Mode-specific system prompt + context + query
-   sent to xAI Grok LLM
+   sent to Groq LLM (Llama 3.3 70B)
          │
-7. LLM streams response token-by-token via SSE          ~4-6s
+7. LLM streams response token-by-token via SSE          ~0.5-1s
 ```
 
 ### Two-Phase Architecture
@@ -97,7 +97,7 @@ The streaming endpoint (`/api/query/stream`) splits retrieval and generation:
 - **Phase 1 (Retrieval):** Embed query → Pinecone search → return sources immediately as an SSE `sources` event. User sees relevant code within ~2 seconds.
 - **Phase 2 (Generation):** Build context from retrieved nodes → stream LLM tokens one at a time as SSE `token` events. User sees the answer forming in real-time.
 
-This architecture dramatically reduces perceived latency. Total end-to-end is ~6-8 seconds, but the user sees meaningful content at the ~2 second mark.
+Total end-to-end latency is ~2-2.5 seconds, with meaningful content (sources) visible at the ~2 second mark.
 
 ### Context Assembly
 Retrieved chunks are formatted with metadata headers before being sent to the LLM:
@@ -140,17 +140,17 @@ All 8 modes share the same retrieval pipeline. The only difference is the system
 **Mitigation:** Files that produce zero boundary matches fall back to single-file chunks. This means lower granularity but no data loss.
 
 ### LLM latency
-**Symptom:** End-to-end latency is 6-8 seconds, above the 3-second target.
-**Breakdown:** Voyage embedding ~1-1.5s, Pinecone search ~0.3-0.5s, LLM generation ~4-6s.
-**Mitigation:** Streaming architecture reduces perceived latency to ~2s (sources visible immediately). The LLM generation step is the bottleneck and is inherently limited by the provider's inference speed.
+**Current state:** End-to-end latency is ~2-2.5 seconds, under the 3-second target.
+**Breakdown:** Voyage embedding ~1-1.5s, Pinecone search ~0.3s, Groq LLM generation ~0.5-1s.
+**Note:** Streaming architecture means users see source chunks at ~2s, with LLM tokens following almost immediately. Embedding is now the largest single component.
 
 ## Performance Results
 
 | Metric | Target | Actual |
 |--------|--------|--------|
-| Query latency (end-to-end) | <3s | ~6-8s (2s perceived with streaming) |
+| Query latency (end-to-end) | <3s | ~2-2.5s |
 | Retrieval latency | — | ~1.5-2s (embed + search) |
-| LLM generation | — | ~4-6s (streaming) |
+| LLM generation | — | ~0.5-1s (Groq streaming) |
 | Codebase coverage | 100% files | 100% (all .c, .h, .cob, .cbl, .cpy, .y, .l) |
 | Chunks indexed | — | ~4,500 |
 | Ingestion time | <5 min | ~3 min |
