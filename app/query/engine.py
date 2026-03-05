@@ -38,21 +38,21 @@ MODEL_REGISTRY: dict[str, dict] = {
         "api_base": "https://api.groq.com/openai/v1",
         "context_window": 131072,
     },
-    "mixtral-8x7b-32768": {
-        "label": "Mixtral 8x7B",
+    "qwen/qwen3-32b": {
+        "label": "Qwen 3 32B",
         "provider": "groq",
         "api_base": "https://api.groq.com/openai/v1",
-        "context_window": 32768,
-    },
-    # --- xAI / Grok ---
-    "grok-3": {
-        "label": "Grok 3",
-        "provider": "xai",
-        "api_base": "https://api.x.ai/v1",
         "context_window": 131072,
     },
-    "grok-3-mini": {
-        "label": "Grok 3 Mini",
+    "moonshotai/kimi-k2-instruct-0905": {
+        "label": "Kimi K2",
+        "provider": "groq",
+        "api_base": "https://api.groq.com/openai/v1",
+        "context_window": 131072,
+    },
+    # --- xAI / Grok ---
+    "grok-4-fast-non-reasoning": {
+        "label": "Grok 4 Fast",
         "provider": "xai",
         "api_base": "https://api.x.ai/v1",
         "context_window": 131072,
@@ -60,12 +60,6 @@ MODEL_REGISTRY: dict[str, dict] = {
     # --- Google / Gemini (OpenAI-compatible endpoint) ---
     "gemini-2.5-flash": {
         "label": "Gemini 2.5 Flash",
-        "provider": "google",
-        "api_base": "https://generativelanguage.googleapis.com/v1beta/openai",
-        "context_window": 1048576,
-    },
-    "gemini-2.5-pro": {
-        "label": "Gemini 2.5 Pro",
         "provider": "google",
         "api_base": "https://generativelanguage.googleapis.com/v1beta/openai",
         "context_window": 1048576,
@@ -315,12 +309,10 @@ class LegacyLensEngine:
         timing = {"retrieval_ms": retrieval_ms, "rerank_ms": rerank_ms}
         return sources, nodes_with_scores, timing
 
-    def stream_answer(
-        self, query_text: str, nodes_with_scores: list,
-        mode: str = "explain", model: str | None = None,
-    ) -> Generator[str, None, None]:
-        """Stream LLM answer token-by-token given pre-retrieved nodes."""
-        # Build context string from nodes (same format LlamaIndex would use)
+    def _build_prompt(
+        self, query_text: str, nodes_with_scores: list, mode: str = "explain",
+    ) -> str:
+        """Build the full LLM prompt from retrieved nodes."""
         context_parts = []
         for nws in nodes_with_scores:
             node = nws.node
@@ -341,11 +333,8 @@ class LegacyLensEngine:
             )
         context_str = "\n\n".join(context_parts)
 
-        # Pick mode-specific system prompt
         system_prompt = MODE_PROMPTS.get(mode, SYSTEM_PROMPT)
-
-        # Build full prompt
-        full_prompt = (
+        return (
             system_prompt + "\n\n"
             + QUERY_TEMPLATE.format(
                 context_str=context_str,
@@ -353,13 +342,29 @@ class LegacyLensEngine:
             )
         )
 
-        # Stream from LLM (use per-request model if specified)
+    def stream_answer(
+        self, query_text: str, nodes_with_scores: list,
+        mode: str = "explain", model: str | None = None,
+    ) -> Generator[str, None, None]:
+        """Stream LLM answer token-by-token given pre-retrieved nodes."""
+        full_prompt = self._build_prompt(query_text, nodes_with_scores, mode)
         llm = self._get_llm(model) if model else Settings.llm
         messages = [ChatMessage(role="user", content=full_prompt)]
         stream_resp = llm.stream_chat(messages)
         for token in stream_resp:
             if token.delta:
                 yield token.delta
+
+    def generate_answer(
+        self, query_text: str, nodes_with_scores: list,
+        mode: str = "explain", model: str | None = None,
+    ) -> str:
+        """Generate a complete LLM answer (non-streaming)."""
+        full_prompt = self._build_prompt(query_text, nodes_with_scores, mode)
+        llm = self._get_llm(model) if model else Settings.llm
+        messages = [ChatMessage(role="user", content=full_prompt)]
+        response = llm.chat(messages)
+        return response.message.content
 
     def query(self, query_text: str, top_k: int | None = None) -> QueryResult:
         """

@@ -133,12 +133,15 @@ async def query_codebase(request: QueryRequest):
 
 @app.post("/api/query/stream")
 async def query_stream(request: QueryRequest):
-    """Stream query results via Server-Sent Events.
+    """Query with retrieval + LLM generation.
 
-    Event sequence:
-      event: sources  — JSON array of source chunks (sent immediately after retrieval)
+    When STREAM_RESPONSE=true, streams via Server-Sent Events:
+      event: sources  — JSON array of source chunks
       event: token    — single LLM token string (repeated)
       event: done     — JSON with latency_ms
+
+    When STREAM_RESPONSE=false (default), returns a single JSON response
+    matching the same shape as /api/query.
     """
     if engine._query_engine is None:
         raise HTTPException(
@@ -146,14 +149,58 @@ async def query_stream(request: QueryRequest):
             detail="Query engine not initialized. Check API keys and Pinecone index.",
         )
 
+    mode = request.mode if request.mode in VALID_MODES else "explain"
+
+    # --- Non-streaming path ---
+    if not settings.STREAM_RESPONSE:
+        t0 = time.time()
+        try:
+            sources, nodes, timing = engine.retrieve_chunks(request.query, request.top_k)
+            t_gen = time.time()
+            answer = engine.generate_answer(
+                request.query, nodes, mode=mode, model=request.model,
+            )
+            generation_ms = (time.time() - t_gen) * 1000
+            latency_ms = (time.time() - t0) * 1000
+
+            logger.info(
+                f"Query completed in {latency_ms:.0f}ms "
+                f"(retrieval={timing['retrieval_ms']:.0f}ms, "
+                f"rerank={timing['rerank_ms']:.0f}ms, "
+                f"generation={generation_ms:.0f}ms), "
+                f"{len(sources)} sources retrieved"
+            )
+
+            return {
+                "answer": answer,
+                "sources": [
+                    {
+                        "file_path": s.file_path,
+                        "line_start": s.line_start,
+                        "line_end": s.line_end,
+                        "language": s.language,
+                        "chunk_type": s.chunk_type,
+                        "function_name": s.function_name,
+                        "text": s.text,
+                        "score": s.score,
+                    }
+                    for s in sources
+                ],
+                "query": request.query,
+                "latency_ms": latency_ms,
+                "timing": {**timing, "generation_ms": generation_ms},
+            }
+        except Exception as e:
+            logger.exception(f"Query failed: {e}")
+            raise HTTPException(status_code=500, detail=f"Query failed: {str(e)}")
+
+    # --- Streaming path (SSE) ---
     def event_generator():
         t0 = time.time()
 
         try:
-            # Phase 1: Retrieve chunks (embed query + Pinecone search + rerank)
             sources, nodes, timing = engine.retrieve_chunks(request.query, request.top_k)
 
-            # Emit per-stage timing before sources
             yield f"event: timing\ndata: {json.dumps(timing)}\n\n"
 
             sources_data = [
@@ -171,9 +218,7 @@ async def query_stream(request: QueryRequest):
             ]
             yield f"event: sources\ndata: {json.dumps(sources_data)}\n\n"
 
-            # Phase 2: Stream LLM answer token by token
             t_gen = time.time()
-            mode = request.mode if request.mode in VALID_MODES else "explain"
             for token in engine.stream_answer(
                 request.query, nodes, mode=mode, model=request.model,
             ):
@@ -218,6 +263,12 @@ async def health_check():
 async def list_models():
     """Return available LLM models for the UI dropdown."""
     return engine.get_available_models()
+
+
+@app.get("/api/config")
+async def get_config():
+    """Return client-relevant configuration."""
+    return {"stream_response": settings.STREAM_RESPONSE}
 
 
 # Serve static frontend

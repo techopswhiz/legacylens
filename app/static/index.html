@@ -721,6 +721,12 @@
     }
     renderExampleChips();
 
+    // Fetch server config (streaming toggle)
+    let streamResponse = true; // fallback to streaming if config fetch fails
+    fetch('/api/config').then(r => r.json()).then(cfg => {
+      streamResponse = cfg.stream_response;
+    }).catch(() => {});
+
     btn.addEventListener('click', submitQuery);
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !btn.disabled) submitQuery();
@@ -773,66 +779,90 @@
           throw new Error(err.detail || 'HTTP ' + res.status);
         }
 
-        const reader = res.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
-        let currentEvent = '';
-        let answerText = '';
+        if (!streamResponse) {
+          // --- Non-streaming: single JSON response ---
+          const data = await res.json();
 
-        resultsDiv.classList.add('active');
-        loading.classList.remove('active');
-        answerEl.closest('.answer-card').classList.add('streaming');
+          const retSec = (data.timing.retrieval_ms / 1000).toFixed(2);
+          setBadge(timerRetrieval, 'done', 'RETRIEVAL: ' + retSec + 's');
+          const genSec = (data.timing.generation_ms / 1000).toFixed(2);
+          setBadge(timerGeneration, 'done', 'GENERATION: ' + genSec + 's');
+          const totalSec = (data.latency_ms / 1000).toFixed(2);
+          setBadge(timerTotal, 'done', 'TOTAL: ' + totalSec + 's');
 
-        while (true) {
-          const { done: streamDone, value } = await reader.read();
-          if (streamDone) break;
+          resultsDiv.classList.add('active');
+          loading.classList.remove('active');
 
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split('\n');
-          buffer = lines.pop();
+          displaySources(data.sources);
+          /* renderMarkdown uses DOMPurify.sanitize — safe */
+          answerEl.innerHTML = renderMarkdown(data.answer);
+          answerEl.querySelectorAll('pre code').forEach(block => {
+            hljs.highlightElement(block);
+          });
+          resetBtn.classList.add('visible');
 
-          for (const line of lines) {
-            if (line.startsWith('event: ')) {
-              currentEvent = line.slice(7);
-            } else if (line.startsWith('data: ')) {
-              const data = JSON.parse(line.slice(6));
+        } else {
+          // --- Streaming: SSE ---
+          const reader = res.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = '';
+          let currentEvent = '';
+          let answerText = '';
 
-              if (currentEvent === 'timing') {
-                // Retrieval done — show time, start generation pulse
-                const sec = (data.retrieval_ms / 1000).toFixed(2);
-                setBadge(timerRetrieval, 'done', 'RETRIEVAL: ' + sec + 's');
-                setBadge(timerGeneration, 'active', 'GENERATION: ...');
+          resultsDiv.classList.add('active');
+          loading.classList.remove('active');
+          answerEl.closest('.answer-card').classList.add('streaming');
 
-              } else if (currentEvent === 'sources') {
-                displaySources(data);
+          while (true) {
+            const { done: streamDone, value } = await reader.read();
+            if (streamDone) break;
 
-              } else if (currentEvent === 'token') {
-                answerText += data;
-                /* renderMarkdown uses DOMPurify.sanitize — safe */
-                answerEl.innerHTML = renderMarkdown(answerText);
-                answerEl.querySelectorAll('pre code').forEach(block => {
-                  if (!block.dataset.highlighted) hljs.highlightElement(block);
-                });
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop();
 
-              } else if (currentEvent === 'done') {
-                const genSec = (data.generation_ms / 1000).toFixed(2);
-                const totalSec = (data.latency_ms / 1000).toFixed(2);
-                setBadge(timerGeneration, 'done', 'GENERATION: ' + genSec + 's');
-                setBadge(timerTotal, 'done', 'TOTAL: ' + totalSec + 's');
-                resetBtn.classList.add('visible');
+            for (const line of lines) {
+              if (line.startsWith('event: ')) {
+                currentEvent = line.slice(7);
+              } else if (line.startsWith('data: ')) {
+                const data = JSON.parse(line.slice(6));
 
-              } else if (currentEvent === 'error') {
-                throw new Error(data.detail);
+                if (currentEvent === 'timing') {
+                  const sec = (data.retrieval_ms / 1000).toFixed(2);
+                  setBadge(timerRetrieval, 'done', 'RETRIEVAL: ' + sec + 's');
+                  setBadge(timerGeneration, 'active', 'GENERATION: ...');
+
+                } else if (currentEvent === 'sources') {
+                  displaySources(data);
+
+                } else if (currentEvent === 'token') {
+                  answerText += data;
+                  /* renderMarkdown uses DOMPurify.sanitize — safe */
+                  answerEl.innerHTML = renderMarkdown(answerText);
+                  answerEl.querySelectorAll('pre code').forEach(block => {
+                    if (!block.dataset.highlighted) hljs.highlightElement(block);
+                  });
+
+                } else if (currentEvent === 'done') {
+                  const genSec = (data.generation_ms / 1000).toFixed(2);
+                  const totalSec = (data.latency_ms / 1000).toFixed(2);
+                  setBadge(timerGeneration, 'done', 'GENERATION: ' + genSec + 's');
+                  setBadge(timerTotal, 'done', 'TOTAL: ' + totalSec + 's');
+                  resetBtn.classList.add('visible');
+
+                } else if (currentEvent === 'error') {
+                  throw new Error(data.detail);
+                }
               }
             }
           }
-        }
 
-        /* Final render + highlight (sanitized via DOMPurify) */
-        answerEl.innerHTML = renderMarkdown(answerText);
-        answerEl.querySelectorAll('pre code').forEach(block => {
-          hljs.highlightElement(block);
-        });
+          /* Final render + highlight (sanitized via DOMPurify) */
+          answerEl.innerHTML = renderMarkdown(answerText);
+          answerEl.querySelectorAll('pre code').forEach(block => {
+            hljs.highlightElement(block);
+          });
+        }
 
       } catch (err) {
         errorDiv.textContent = 'Error: ' + err.message;
