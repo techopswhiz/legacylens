@@ -39,7 +39,7 @@ class Settings:
     TOP_K: int = int(os.environ.get("TOP_K", "5"))
 
     # Streaming — set to "true" to stream LLM responses token-by-token
-    STREAM_RESPONSE: bool = os.environ.get("STREAM_RESPONSE", "false").lower() in ("true", "1", "yes")
+    STREAM_RESPONSE: bool = os.environ.get("STREAM_RESPONSE", "true").lower() in ("true", "1", "yes")
 
     # Codebase
     CODEBASE_PATH: Path = PROJECT_ROOT / os.environ.get(

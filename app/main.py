@@ -220,9 +220,13 @@ async def query_stream(request: QueryRequest):
             yield f"event: sources\ndata: {json.dumps(sources_data)}\n\n"
 
             t_gen = time.time()
+            ttft_ms = None
             for token in engine.stream_answer(
                 request.query, nodes, mode=mode, model=request.model,
             ):
+                if ttft_ms is None:
+                    ttft_ms = (time.time() - t_gen) * 1000
+                    yield f"event: ttft\ndata: {json.dumps({'ttft_ms': ttft_ms})}\n\n"
                 yield f"event: token\ndata: {json.dumps(token)}\n\n"
             generation_ms = (time.time() - t_gen) * 1000
 

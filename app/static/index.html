@@ -507,6 +507,7 @@
         <div class="timing-badge" id="timer-model" style="display:none">MODEL: ...</div>
         <div class="timing-badge" id="timer-embedding">EMBEDDING: ...</div>
         <div class="timing-badge" id="timer-retrieval">SEARCH: ...</div>
+        <div class="timing-badge" id="timer-ttft">TTFT: ...</div>
         <div class="timing-badge" id="timer-generation">GENERATION: ...</div>
         <div class="timing-badge" id="timer-total">TOTAL: ...</div>
       </div>
@@ -591,6 +592,7 @@
     const timerModel = document.getElementById('timer-model');
     const timerEmbedding = document.getElementById('timer-embedding');
     const timerRetrieval = document.getElementById('timer-retrieval');
+    const timerTtft = document.getElementById('timer-ttft');
     const timerGeneration = document.getElementById('timer-generation');
     const timerTotal = document.getElementById('timer-total');
     const resetBtn = document.getElementById('reset-btn');
@@ -606,6 +608,7 @@
       timerModel.style.display = 'none';
       setBadge(timerEmbedding, '', 'EMBEDDING: ...');
       setBadge(timerRetrieval, '', 'SEARCH: ...');
+      setBadge(timerTtft, '', 'TTFT: ...');
       setBadge(timerGeneration, '', 'GENERATION: ...');
       setBadge(timerTotal, '', 'TOTAL: ...');
       resetBtn.classList.remove('visible');
@@ -837,10 +840,15 @@
                   setBadge(timerEmbedding, 'done', 'EMBEDDING: ' + embedSec + 's');
                   const searchSec = (data.search_ms / 1000).toFixed(2);
                   setBadge(timerRetrieval, 'done', 'SEARCH: ' + searchSec + 's');
-                  setBadge(timerGeneration, 'active', 'GENERATION: ...');
+                  setBadge(timerTtft, 'active', 'TTFT: ...');
 
                 } else if (currentEvent === 'sources') {
                   displaySources(data);
+
+                } else if (currentEvent === 'ttft') {
+                  const ttftSec = (data.ttft_ms / 1000).toFixed(2);
+                  setBadge(timerTtft, 'done', 'TTFT: ' + ttftSec + 's');
+                  setBadge(timerGeneration, 'active', 'GENERATION: ...');
 
                 } else if (currentEvent === 'token') {
                   answerText += data;

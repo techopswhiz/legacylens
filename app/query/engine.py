@@ -64,12 +64,6 @@ MODEL_REGISTRY: dict[str, dict] = {
         "api_base": "https://generativelanguage.googleapis.com/v1beta/openai",
         "context_window": 1048576,
     },
-    "gemini-2.0-flash": {
-        "label": "Gemini 2.0 Flash",
-        "provider": "google",
-        "api_base": "https://generativelanguage.googleapis.com/v1beta/openai",
-        "context_window": 1048576,
-    },
 }
 
 
